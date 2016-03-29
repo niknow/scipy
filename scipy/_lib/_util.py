@@ -11,6 +11,53 @@ import inspect
 import numpy as np
 
 
+def _valarray(shape, value=np.nan, typecode=None):
+    """Return an array of all value.
+    """
+
+    out = np.ones(shape, dtype=bool) * value
+    if typecode is not None:
+        out = out.astype(typecode)
+    if not isinstance(out, np.ndarray):
+        out = np.asarray(out)
+    return out
+
+
+def _lazywhere(cond, arrays, f, fillvalue=None, f2=None):
+    """
+    np.where(cond, x, fillvalue) always evaluates x even where cond is False.
+    This one only evaluates f(arr1[cond], arr2[cond], ...).
+    For example,
+    >>> a, b = np.array([1, 2, 3, 4]), np.array([5, 6, 7, 8])
+    >>> def f(a, b):
+        return a*b
+    >>> _lazywhere(a > 2, (a, b), f, np.nan)
+    array([ nan,  nan,  21.,  32.])
+
+    Notice it assumes that all `arrays` are of the same shape, or can be
+    broadcasted together.
+
+    """
+    if fillvalue is None:
+        if f2 is None:
+            raise ValueError("One of (fillvalue, f2) must be given.")
+        else:
+            fillvalue = np.nan
+    else:
+        if f2 is not None:
+            raise ValueError("Only one of (fillvalue, f2) can be given.")
+
+    arrays = np.broadcast_arrays(*arrays)
+    temp = tuple(np.extract(cond, arr) for arr in arrays)
+    out = _valarray(np.shape(arrays[0]), value=fillvalue)
+    np.place(out, cond, f(*temp))
+    if f2 is not None:
+        temp = tuple(np.extract(~cond, arr) for arr in arrays)
+        np.place(out, ~cond, f2(*temp))
+
+    return out
+
+
 def _aligned_zeros(shape, dtype=float, order="C", align=None):
     """Allocate a new ndarray with aligned memory.
 
@@ -130,7 +177,7 @@ def _asarray_validated(a, check_finite=True,
         import scipy.sparse
         if scipy.sparse.issparse(a):
             msg = ('Sparse matrices are not supported by this function. '
-                   'Perhaps one of the scipy.linalg.sparse functions '
+                   'Perhaps one of the scipy.sparse.linalg functions '
                    'would work instead.')
             raise ValueError(msg)
     if not mask_ok:
@@ -143,11 +190,7 @@ def _asarray_validated(a, check_finite=True,
             raise ValueError('object arrays are not supported')
     if as_inexact:
         if not np.issubdtype(a.dtype, np.inexact):
-            try:
-                a = toarray(a, dtype=np.float_)
-            except TypeError:
-                # for compatibility with numpy 1.6
-                a = toarray(a).astype(np.float_)
+            a = toarray(a, dtype=np.float_)
     return a
 
 

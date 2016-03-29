@@ -51,15 +51,6 @@ Moments
     kurtosis
     normaltest
 
-Moments Handling NaN:
-
-.. autosummary::
-   :toctree: generated/
-
-    nanmean
-    nanmedian
-    nanstd
-
 Altered Versions
 ----------------
 .. autosummary::
@@ -168,24 +159,19 @@ References
 
 from __future__ import division, print_function, absolute_import
 
-import warnings
-import math
 from collections import namedtuple
-
-from scipy._lib.six import xrange
+import math
+import warnings
 
 # Scipy imports.
-from scipy._lib.six import callable, string_types
+from scipy._lib.six import callable, string_types, xrange
 from numpy import array, asarray, ma, zeros
 import scipy.special as special
 import scipy.linalg as linalg
 import numpy as np
-from . import distributions
-from . import mstats_basic
+from . import distributions, mstats_basic, _stats
 from ._distn_infrastructure import _lazywhere
 from ._stats_mstats_common import _find_repeats, linregress, theilslopes
-
-from ._rank import tiecorrect
 
 __all__ = ['find_repeats', 'gmean', 'hmean', 'mode', 'tmean', 'tvar',
            'tmin', 'tmax', 'tstd', 'tsem', 'moment', 'variation',
@@ -202,8 +188,8 @@ __all__ = ['find_repeats', 'gmean', 'hmean', 'mode', 'tmean', 'tvar',
            'tiecorrect', 'ranksums', 'kruskal', 'friedmanchisquare',
            'chisqprob', 'betai',
            'f_value_wilks_lambda', 'f_value', 'f_value_multivariate',
-           'ss', 'square_of_sums', 'fastsort', 'rankdata', 'nanmean',
-           'nanstd', 'nanmedian', 'combine_pvalues', ]
+           'ss', 'square_of_sums', 'fastsort', 'rankdata',
+           'combine_pvalues', ]
 
 
 def _chk_asarray(a, axis):
@@ -239,9 +225,10 @@ def _chk2_asarray(a, b, axis):
 
 
 def _contains_nan(a, nan_policy='propagate'):
-    if nan_policy not in ('propagate', 'raise', 'omit'):
-        raise ValueError("nan_policy must be either 'propagate', 'raise', or "
-                         "'ignore'")
+    policies = ['propagate', 'raise', 'omit']
+    if nan_policy not in policies:
+        raise ValueError("nan_policy must be one of {%s}" %
+                         ', '.join("'%s'" % s for s in policies))
     try:
         # Calling np.sum to avoid creating a huge array into memory
         # e.g. np.isnan(a).any()
@@ -260,213 +247,6 @@ def _contains_nan(a, nan_policy='propagate'):
         raise ValueError("The input contains nan values")
 
     return (contains_nan, nan_policy)
-
-
-#######
-#  NAN friendly functions
-########
-
-
-@np.deprecate(message="scipy.stats.nanmean is deprecated in scipy 0.15.0 "
-                   "in favour of numpy.nanmean.")
-def nanmean(x, axis=0):
-    """
-    Compute the mean over the given axis ignoring nans.
-
-    Parameters
-    ----------
-    x : ndarray
-        Input array.
-    axis : int or None, optional
-        Axis along which the mean is computed. Default is 0.
-        If None, compute over the whole array `x`.
-
-    Returns
-    -------
-    m : float
-        The mean of `x`, ignoring nans.
-
-    See Also
-    --------
-    nanstd, nanmedian
-
-    Examples
-    --------
-    >>> from scipy import stats
-    >>> a = np.linspace(0, 4, 3)
-    >>> a
-    array([ 0.,  2.,  4.])
-    >>> a[-1] = np.nan
-    >>> stats.nanmean(a)
-    1.0
-
-    """
-    x, axis = _chk_asarray(x, axis)
-    x = x.copy()
-    Norig = x.shape[axis]
-    mask = np.isnan(x)
-    factor = 1.0 - np.sum(mask, axis) / Norig
-
-    x[mask] = 0.0
-    return np.mean(x, axis) / factor
-
-
-@np.deprecate(message="scipy.stats.nanstd is deprecated in scipy 0.15 "
-                      "in favour of numpy.nanstd.\nNote that numpy.nanstd "
-                      "has a different signature.")
-def nanstd(x, axis=0, bias=False):
-    """
-    Compute the standard deviation over the given axis, ignoring nans.
-
-    Parameters
-    ----------
-    x : array_like
-        Input array.
-    axis : int or None, optional
-        Axis along which the standard deviation is computed. Default is 0.
-        If None, compute over the whole array `x`.
-    bias : bool, optional
-        If True, the biased (normalized by N) definition is used. If False
-        (default), the unbiased definition is used.
-
-    Returns
-    -------
-    s : float
-        The standard deviation.
-
-    See Also
-    --------
-    nanmean, nanmedian
-
-    Examples
-    --------
-    >>> from scipy import stats
-    >>> a = np.arange(10, dtype=float)
-    >>> a[1:3] = np.nan
-    >>> np.std(a)
-    nan
-    >>> stats.nanstd(a)
-    2.9154759474226504
-    >>> stats.nanstd(a.reshape(2, 5), axis=1)
-    array([ 2.0817,  1.5811])
-    >>> stats.nanstd(a.reshape(2, 5), axis=None)
-    2.9154759474226504
-
-    """
-    x, axis = _chk_asarray(x, axis)
-    x = x.copy()
-    Norig = x.shape[axis]
-
-    mask = np.isnan(x)
-    Nnan = np.sum(mask, axis) * 1.0
-    n = Norig - Nnan
-
-    x[mask] = 0.0
-    m1 = np.sum(x, axis) / n
-
-    if axis:
-        d = x - np.expand_dims(m1, axis)
-    else:
-        d = x - m1
-
-    d *= d
-
-    m2 = np.sum(d, axis) - m1 * m1 * Nnan
-
-    if bias:
-        m2c = m2 / n
-    else:
-        m2c = m2 / (n - 1.0)
-
-    return np.sqrt(m2c)
-
-
-def _nanmedian(arr1d):  # This only works on 1d arrays
-    """Private function for rank a arrays. Compute the median ignoring Nan.
-
-    Parameters
-    ----------
-    arr1d : ndarray
-        Input array, of rank 1.
-
-    Results
-    -------
-    m : float
-        The median.
-    """
-    x = arr1d.copy()
-    c = np.isnan(x)
-    s = np.where(c)[0]
-    if s.size == x.size:
-        warnings.warn("All-NaN slice encountered", RuntimeWarning)
-        return np.nan
-    elif s.size != 0:
-        # select non-nans at end of array
-        enonan = x[-s.size:][~c[-s.size:]]
-        # fill nans in beginning of array with non-nans of end
-        x[s[:enonan.size]] = enonan
-        # slice nans away
-        x = x[:-s.size]
-    return np.median(x, overwrite_input=True)
-
-@np.deprecate(message="scipy.stats.nanmedian is deprecated in scipy 0.15 "
-                      "in favour of numpy.nanmedian.")
-def nanmedian(x, axis=0):
-    """
-    Compute the median along the given axis ignoring nan values.
-
-    Parameters
-    ----------
-    x : array_like
-        Input array.
-    axis : int or None, optional
-        Axis along which the median is computed. Default is 0.
-        If None, compute over the whole array `x`.
-
-    Returns
-    -------
-    m : float
-        The median of `x` along `axis`.
-
-    See Also
-    --------
-    nanstd, nanmean, numpy.nanmedian
-
-    Examples
-    --------
-    >>> from scipy import stats
-    >>> a = np.array([0, 3, 1, 5, 5, np.nan])
-    >>> stats.nanmedian(a)
-    array(3.0)
-
-    >>> b = np.array([0, 3, 1, 5, 5, np.nan, 5])
-    >>> stats.nanmedian(b)
-    array(4.0)
-
-    Example with axis:
-
-    >>> c = np.arange(30.).reshape(5,6)
-    >>> idx = np.array([False, False, False, True, False] * 6).reshape(5,6)
-    >>> c[idx] = np.nan
-    >>> c
-    array([[  0.,   1.,   2.,  nan,   4.,   5.],
-           [  6.,   7.,  nan,   9.,  10.,  11.],
-           [ 12.,  nan,  14.,  15.,  16.,  17.],
-           [ nan,  19.,  20.,  21.,  22.,  nan],
-           [ 24.,  25.,  26.,  27.,  nan,  29.]])
-    >>> stats.nanmedian(c, axis=1)
-    array([  2. ,   9. ,  15. ,  20.5,  26. ])
-
-    """
-    x, axis = _chk_asarray(x, axis)
-    if x.ndim == 0:
-        return float(x.item())
-    if hasattr(np, 'nanmedian'):  # numpy 1.9 faster for some cases
-        return np.nanmedian(x, axis)
-    x = np.apply_along_axis(_nanmedian, axis, x)
-    if x.ndim == 0:
-        x = float(x.item())
-    return x
 
 
 #####################################
@@ -1534,6 +1314,12 @@ def kurtosistest(a, axis=0, nan_policy='propagate'):
     Notes
     -----
     Valid only for n>20.  The Z-score is set to 0 for bad entries.
+    This function uses the method described in [1]_.
+    
+    References
+    ----------
+    .. [1] see e.g. F. J. Anscombe, W. J. Glynn, "Distribution of the kurtosis
+       statistic b2 for normal samples", Biometrika, vol. 70, pp. 227-234, 1983.
 
     """
     a, axis = _chk_asarray(a, axis)
@@ -1558,16 +1344,18 @@ def kurtosistest(a, axis=0, nan_policy='propagate'):
     b2 = kurtosis(a, axis, fisher=False)
 
     E = 3.0*(n-1) / (n+1)
-    varb2 = 24.0*n*(n-2)*(n-3) / ((n+1)*(n+1.)*(n+3)*(n+5))
-    x = (b2-E) / np.sqrt(varb2)
+    varb2 = 24.0*n*(n-2)*(n-3) / ((n+1)*(n+1.)*(n+3)*(n+5))  # [1]_ Eq. 1
+    x = (b2-E) / np.sqrt(varb2)  # [1]_ Eq. 4
+    # [1]_ Eq. 2:
     sqrtbeta1 = 6.0*(n*n-5*n+2)/((n+7)*(n+9)) * np.sqrt((6.0*(n+3)*(n+5)) /
                                                         (n*(n-2)*(n-3)))
+    # [1]_ Eq. 3:
     A = 6.0 + 8.0/sqrtbeta1 * (2.0/sqrtbeta1 + np.sqrt(1+4.0/(sqrtbeta1**2)))
     term1 = 1 - 2/(9.0*A)
     denom = 1 + x*np.sqrt(2/(A-4.0))
     denom = np.where(denom < 0, 99, denom)
     term2 = np.where(denom < 0, term1, np.power((1-2.0/A)/denom, 1/3.0))
-    Z = (term1 - term2) / np.sqrt(2/(9.0*A))
+    Z = (term1 - term2) / np.sqrt(2/(9.0*A))  # [1]_ Eq. 5
     Z = np.where(denom == 99, 0, Z)
     if Z.ndim == 0:
         Z = Z[()]
@@ -2313,15 +2101,7 @@ def obrientransform(*args):
 
         arrays.append(t)
 
-    # If the arrays are not all the same shape, calling np.array(arrays)
-    # creates a 1-D array with dtype `object` in numpy 1.6+. In numpy
-    # 1.5.x, it raises an exception.  To work around this, we explicitly
-    # set the dtype to `object` when the arrays are not all the same shape.
-    if len(arrays) < 2 or all(x.shape == arrays[0].shape for x in arrays[1:]):
-        dt = None
-    else:
-        dt = object
-    return np.array(arrays, dtype=dt)
+    return np.array(arrays)
 
 
 @np.deprecate(message="scipy.stats.signaltonoise is deprecated in scipy 0.16.0")
@@ -2385,7 +2165,7 @@ def sem(a, axis=0, ddof=1, nan_policy='propagate'):
     Notes
     -----
     The default value for `ddof` is different to the default (0) used by other
-    ddof containing routines, such as np.std nd stats.nanstd.
+    ddof containing routines, such as np.std and np.nanstd.
 
     Examples
     --------
@@ -2963,11 +2743,11 @@ def pearsonr(x, y):
 
     The Pearson correlation coefficient measures the linear relationship
     between two datasets. Strictly speaking, Pearson's correlation requires
-    that each dataset be normally distributed. Like other correlation
-    coefficients, this one varies between -1 and +1 with 0 implying no
-    correlation. Correlations of -1 or +1 imply an exact linear
-    relationship. Positive correlations imply that as x increases, so does
-    y. Negative correlations imply that as x increases, y decreases.
+    that each dataset be normally distributed, and not necessarily zero-mean.
+    Like other correlation coefficients, this one varies between -1 and +1
+    with 0 implying no correlation. Correlations of -1 or +1 imply an exact
+    linear relationship. Positive correlations imply that as x increases, so
+    does y. Negative correlations imply that as x increases, y decreases.
 
     The p-value roughly indicates the probability of an uncorrelated system
     producing datasets that have a Pearson correlation at least as extreme
@@ -3311,7 +3091,9 @@ def spearmanr(a, b=None, axis=0, nan_policy='propagate'):
 
     olderr = np.seterr(divide='ignore')  # rs can have elements equal to 1
     try:
-        t = rs * np.sqrt((n-2) / ((rs+1.0)*(1.0-rs)))
+        # clip the small negative values possibly caused by rounding
+        # errors before taking the square root
+        t = rs * np.sqrt(((n-2)/((rs+1.0)*(1.0-rs))).clip(0))
     finally:
         np.seterr(**olderr)
 
@@ -3720,8 +3502,8 @@ def _unequal_var_ttest_denom(v1, n1, v2, n2):
 
 
 def _equal_var_ttest_denom(v1, n1, v2, n2):
-    df = n1 + n2 - 2
-    svar = ((n1 - 1) * v1 + (n2 - 1) * v2) / float(df)
+    df = n1 + n2 - 2.0
+    svar = ((n1 - 1) * v1 + (n2 - 1) * v2) / df
     denom = np.sqrt(svar * (1.0 / n1 + 1.0 / n2))
     return df, denom
 
@@ -4576,13 +4358,21 @@ def ks_2samp(data1, data2):
     """
     data1 = np.sort(data1)
     data2 = np.sort(data2)
-    n1 = data1.shape[0]
-    n2 = data2.shape[0]
-    data_all = np.concatenate([data1, data2])
-    cdf1 = np.searchsorted(data1, data_all, side='right') / (1.0*n1)
-    cdf2 = np.searchsorted(data2, data_all, side='right') / (1.0*n2)
-    d = np.max(np.absolute(cdf1 - cdf2))
-    # Note: d absolute not signed distance
+    n1, = data1.shape
+    n2, = data2.shape
+    common_type = np.find_common_type([], [data1.dtype, data2.dtype])
+    if not (np.issubdtype(common_type, np.number) and
+            not np.issubdtype(common_type, np.complexfloating)):
+        raise ValueError('ks_2samp only accepts real inputs')
+    # nans, if any, are at the end after sorting.
+    if np.isnan(data1[-1]) or np.isnan(data2[-1]):
+        raise ValueError('ks_2samp only accepts non-nan inputs')
+    # Absolute KS distance can be computed (less efficiently) as follows:
+    # data_all = np.concatenate([data1, data2])
+    # d = np.max(np.abs(data1.searchsorted(data_all, side='right') / n1 -
+    #                   data2.searchsorted(data_all, side='right') / n2))
+    d = _stats.ks_2samp(np.asarray(data1, common_type),
+                        np.asarray(data2, common_type))
     en = np.sqrt(n1 * n2 / float(n1 + n2))
     try:
         prob = distributions.kstwobign.sf((en + 0.12 + 0.11 / en) * d)
@@ -4590,6 +4380,54 @@ def ks_2samp(data1, data2):
         prob = 1.0
 
     return Ks_2sampResult(d, prob)
+
+
+def tiecorrect(rankvals):
+    """
+    Tie correction factor for ties in the Mann-Whitney U and
+    Kruskal-Wallis H tests.
+
+    Parameters
+    ----------
+    rankvals : array_like
+        A 1-D sequence of ranks.  Typically this will be the array
+        returned by `stats.rankdata`.
+
+    Returns
+    -------
+    factor : float
+        Correction factor for U or H.
+
+    See Also
+    --------
+    rankdata : Assign ranks to the data
+    mannwhitneyu : Mann-Whitney rank test
+    kruskal : Kruskal-Wallis H test
+
+    References
+    ----------
+    .. [1] Siegel, S. (1956) Nonparametric Statistics for the Behavioral
+           Sciences.  New York: McGraw-Hill.
+
+    Examples
+    --------
+    >>> from scipy.stats import tiecorrect, rankdata
+    >>> tiecorrect([1, 2.5, 2.5, 4])
+    0.9
+    >>> ranks = rankdata([1, 3, 2, 4, 5, 7, 2, 8, 4])
+    >>> ranks
+    array([ 1. ,  4. ,  2.5,  5.5,  7. ,  8. ,  2.5,  9. ,  5.5])
+    >>> tiecorrect(ranks)
+    0.9833333333333333
+
+    """
+    arr = np.sort(rankvals)
+    idx = np.nonzero(np.r_[True, arr[1:] != arr[:-1], True])[0]
+    cnt = np.diff(idx).astype(np.float64)
+
+    size = np.float64(arr.size)
+    return 1.0 if size < 2 else 1.0 - (cnt**3 - cnt).sum() / (size**3 - size)
+
 
 MannwhitneyuResult = namedtuple('MannwhitneyuResult', ('statistic', 'pvalue'))
 
@@ -5320,7 +5158,7 @@ def rankdata(a, method='average'):
     array([ 1,  2,  4,  3])
     """
     if method not in ('average', 'min', 'max', 'dense', 'ordinal'):
-        raise ValueError('unknown method "{0:}"'.format(method))
+        raise ValueError('unknown method "{0}"'.format(method))
 
     arr = np.ravel(np.asarray(a))
     algo = 'mergesort' if method == 'ordinal' else 'quicksort'

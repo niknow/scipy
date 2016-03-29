@@ -22,15 +22,15 @@ from __future__ import division, print_function, absolute_import
 import warnings
 import numpy as np
 
-#np.linalg.qr fails on some tests with LinAlgError: zgeqrf returns -7
-#use scipy's qr until this is solved
+# np.linalg.qr fails on some tests with LinAlgError: zgeqrf returns -7
+# use scipy's qr until this is solved
 
 from scipy.linalg import qr as s_qr
 
 
 import numpy
 from numpy import (r_, eye, real, atleast_1d, atleast_2d, poly,
-                   squeeze, asarray, product, zeros, array,
+                   squeeze, asarray, product, zeros, array, outer,
                    dot, transpose, ones, zeros_like, linspace, nan_to_num)
 import copy
 
@@ -52,8 +52,9 @@ def tf2ss(num, den):
     Parameters
     ----------
     num, den : array_like
-        Sequences representing the numerator and denominator polynomials.
-        The denominator needs to be at least as long as the numerator.
+        Sequences representing the coefficients of the numerator and
+        denominator polynomials, in order of descending degree. The
+        denominator needs to be at least as long as the numerator.
 
     Returns
     -------
@@ -92,7 +93,7 @@ def tf2ss(num, den):
     >>> C
     array([[ 1.,  2.]])
     >>> D
-    array([ 1.])
+    array([[ 1.]])
     """
     # Controller canonical state-space representation.
     #  if M+1 = len(num) and K+1 = len(den) then we must have M <= K
@@ -118,17 +119,27 @@ def tf2ss(num, den):
     num = r_['-1', zeros((num.shape[0], K - M), num.dtype), num]
 
     if num.shape[-1] > 0:
-        D = num[:, 0]
+        D = atleast_2d(num[:, 0])
+
     else:
-        D = array([], float)
+        # We don't assign it an empty array because this system
+        # is not 'null'. It just doesn't have a non-zero D
+        # matrix. Thus, it should have a non-zero shape so that
+        # it can be operated on by functions like 'ss2tf'
+        D = array([[0]], float)
 
     if K == 1:
-        return array([], float), array([], float), array([], float), D
+        D = D.reshape(num.shape)
+
+        return (zeros((1, 1)), zeros((1, D.shape[1])),
+                zeros((D.shape[0], 1)), D)
 
     frow = -array([den[1:]])
     A = r_[frow, eye(K - 2, K - 1)]
     B = eye(K - 1, 1)
-    C = num[:, 1:] - num[:, 0] * den[1:]
+    C = num[:, 1:] - outer(num[:, 0], den[1:])
+    D = D.reshape((C.shape[0], B.shape[1]))
+
     return A, B, C, D
 
 
@@ -375,6 +386,10 @@ class lti(object):
     of one of its subclasses: `StateSpace`, `TransferFunction` or
     `ZerosPolesGain`.
 
+    If (numerator, denominator) is passed in for ``*system``, coefficients for
+    both the numerator and denominator should be specified in descending
+    exponent order (e.g. ``s^2 + 3s + 5`` would be represented as ``[1, 3, 5]``).
+
     Changing the value of properties that are not directly part of the current
     system representation (such as the `zeros` of a `StateSpace` system) is
     very inefficient and may lead to numerical inaccuracies.
@@ -579,8 +594,8 @@ class TransferFunction(lti):
 
     Represents the system as the transfer function
     :math:`H(s)=\sum_{i=0}^N b[N-i] s^i / \sum_{j=0}^M a[M-j] s^j`, where :math:`b` are
-    elements of the numerator `num` and :math:`a` are the elements of the
-    denominator `den`.
+    elements of the numerator `num`, :math:`a` are elements of the denominator
+    `den`, and ``N == len(b) - 1``, ``M == len(a) - 1``.
 
     Parameters
     ----------
@@ -604,6 +619,10 @@ class TransferFunction(lti):
     `TransferFunction` system representation (such as the `A`, `B`, `C`, `D`
     state-space matrices) is very inefficient and may lead to numerical
     inaccuracies.
+
+    If (numerator, denominator) is passed in for ``*system``, coefficients
+    for both the numerator and denominator should be specified in descending
+    exponent order (e.g. ``s^2 + 3s + 5`` would be represented as ``[1, 3, 5]``).
 
     Examples
     --------
@@ -1086,6 +1105,10 @@ def lsim2(system, U=None, T=None, X0=None, **kwargs):
     given to `lsim2` are passed on to `odeint`.  See the documentation
     for `scipy.integrate.odeint` for the full list of arguments.
 
+    If (num, den) is passed in for ``system``, coefficients for both the
+    numerator and denominator should be specified in descending exponent
+    order (e.g. ``s^2 + 3s + 5`` would be represented as ``[1, 3, 5]``).
+
     """
     if isinstance(system, lti):
         sys = system.to_ss()
@@ -1192,6 +1215,12 @@ def lsim(system, U, T, X0=None, interp=True):
     xout : ndarray
         Time evolution of the state vector.
 
+    Notes
+    -----
+    If (num, den) is passed in for ``system``, coefficients for both the
+    numerator and denominator should be specified in descending exponent
+    order (e.g. ``s^2 + 3s + 5`` would be represented as ``[1, 3, 5]``).
+
     Examples
     --------
     Simulate a double integrator y'' = u, with a constant input u = 1
@@ -1229,9 +1258,9 @@ def lsim(system, U, T, X0=None, interp=True):
     else:
         raise ValueError("Initial time must be nonnegative")
 
-    no_input = (U is None
-                or (isinstance(U, (int, float)) and U == 0.)
-                or not np.any(U))
+    no_input = (U is None or
+                (isinstance(U, (int, float)) and U == 0.) or
+                not np.any(U))
 
     if n_steps == 1:
         yout = squeeze(dot(xout, transpose(C)))
@@ -1319,7 +1348,7 @@ def _default_response_times(A, n):
 
     Parameters
     ----------
-    A : ndarray
+    A : array_like
         The system matrix, which is square.
     n : int
         The number of time samples to generate.
@@ -1370,6 +1399,12 @@ def impulse(system, X0=None, T=None, N=None):
     yout : ndarray
         A 1-D array containing the impulse response of the system (except for
         singularities at zero).
+
+    Notes
+    -----
+    If (num, den) is passed in for ``system``, coefficients for both the
+    numerator and denominator should be specified in descending exponent
+    order (e.g. ``s^2 + 3s + 5`` would be represented as ``[1, 3, 5]``).
 
     """
     if isinstance(system, lti):
@@ -1436,6 +1471,10 @@ def impulse2(system, X0=None, T=None, N=None, **kwargs):
     -----
     The solution is generated by calling `scipy.signal.lsim2`, which uses
     the differential equation solver `scipy.integrate.odeint`.
+
+    If (num, den) is passed in for ``system``, coefficients for both the
+    numerator and denominator should be specified in descending exponent
+    order (e.g. ``s^2 + 3s + 5`` would be represented as ``[1, 3, 5]``).
 
     .. versionadded:: 0.8.0
 
@@ -1504,6 +1543,12 @@ def step(system, X0=None, T=None, N=None):
     --------
     scipy.signal.step2
 
+    Notes
+    -----
+    If (num, den) is passed in for ``system``, coefficients for both the
+    numerator and denominator should be specified in descending exponent
+    order (e.g. ``s^2 + 3s + 5`` would be represented as ``[1, 3, 5]``).
+
     """
     if isinstance(system, lti):
         sys = system.to_ss()
@@ -1563,6 +1608,10 @@ def step2(system, X0=None, T=None, N=None, **kwargs):
 
     Notes
     -----
+    If (num, den) is passed in for ``system``, coefficients for both the
+    numerator and denominator should be specified in descending exponent
+    order (e.g. ``s^2 + 3s + 5`` would be represented as ``[1, 3, 5]``).
+
     .. versionadded:: 0.8.0
     """
     if isinstance(system, lti):
@@ -1614,6 +1663,9 @@ def bode(system, w=None, n=100):
 
     Notes
     -----
+    If (num, den) is passed in for ``system``, coefficients for both the
+    numerator and denominator should be specified in descending exponent
+    order (e.g. ``s^2 + 3s + 5`` would be represented as ``[1, 3, 5]``).
 
     .. versionadded:: 0.11.0
 
@@ -1655,7 +1707,7 @@ def freqresp(system, w=None, n=10000):
 
     w : array_like, optional
         Array of frequencies (in rad/s). Magnitude and phase data is
-        calculated for every value in this array. If not given a reasonable
+        calculated for every value in this array. If not given, a reasonable
         set will be calculated.
     n : int, optional
         Number of frequency points to compute if `w` is not given. The `n`
@@ -1668,6 +1720,12 @@ def freqresp(system, w=None, n=10000):
         Frequency array [rad/s]
     H : 1D ndarray
         Array of complex magnitude values
+
+    Notes
+    -----
+    If (num, den) is passed in for ``system``, coefficients for both the
+    numerator and denominator should be specified in descending exponent
+    order (e.g. ``s^2 + 3s + 5`` would be represented as ``[1, 3, 5]``).
 
     Examples
     --------
@@ -1686,7 +1744,9 @@ def freqresp(system, w=None, n=10000):
     >>> plt.plot(H.real, -H.imag, "r")
     >>> plt.show()
     """
-    if isinstance(system, lti):
+    if isinstance(system, TransferFunction):
+        sys = system
+    elif isinstance(system, lti):
         sys = system.to_tf()
     else:
         sys = lti(*system).to_tf()

@@ -97,6 +97,10 @@ class TestTrimmedStats(TestCase):
         assert_raises(ValueError, stats.tmin, x, nan_policy='raise')
         assert_raises(ValueError, stats.tmin, x, nan_policy='foobar')
 
+        with self.assertRaisesRegexp(ValueError,
+                                     "'propagate', 'raise', 'omit'"):
+            stats.tmin(x, nan_policy='foo')
+
     def test_tmax(self):
         assert_equal(stats.tmax(4), 4)
 
@@ -126,131 +130,6 @@ class TestTrimmedStats(TestCase):
         assert_approx_equal(stats.tsem(X, limits=[-1, 10]),
                             stats.tsem(X, limits=None),
                             significant=self.dprec)
-
-
-class TestNanFunc(TestCase):
-    def __init__(self, *args, **kw):
-        TestCase.__init__(self, *args, **kw)
-        self.X = X.copy()
-
-        self.Xall = X.copy()
-        self.Xall[:] = np.nan
-
-        self.Xsome = X.copy()
-        self.Xsomet = X.copy()
-        self.Xsome[0] = np.nan
-        self.Xsomet = self.Xsomet[1:]
-
-    def test_nanmean_none(self):
-        # Check nanmean when no values are nan.
-        with warnings.catch_warnings():
-            warnings.simplefilter('ignore', DeprecationWarning)
-            m = stats.nanmean(X)
-            assert_approx_equal(m, X[4])
-
-    def test_nanmean_some(self):
-        # Check nanmean when some values only are nan.
-        with warnings.catch_warnings():
-            warnings.simplefilter('ignore', DeprecationWarning)
-            m = stats.nanmean(self.Xsome)
-            assert_approx_equal(m, 5.5)
-
-    def test_nanmean_all(self):
-        # Check nanmean when all values are nan.
-        with warnings.catch_warnings():
-            warns = (DeprecationWarning, RuntimeWarning)
-            warnings.simplefilter('ignore', warns)
-            with np.errstate(invalid='ignore'):
-                m = stats.nanmean(self.Xall)
-        assert_(np.isnan(m))
-
-    def test_nanstd_none(self):
-        # Check nanstd when no values are nan.
-        with warnings.catch_warnings():
-            warnings.simplefilter('ignore', DeprecationWarning)
-            s = stats.nanstd(self.X)
-        assert_approx_equal(s, np.std(self.X, ddof=1))
-
-    def test_nanstd_some(self):
-        # Check nanstd when some values only are nan.
-        with warnings.catch_warnings():
-            warnings.simplefilter('ignore', DeprecationWarning)
-            s = stats.nanstd(self.Xsome)
-        assert_approx_equal(s, np.std(self.Xsomet, ddof=1))
-
-    def test_nanstd_all(self):
-        # Check nanstd when all values are nan.
-        with warnings.catch_warnings():
-            warns = (DeprecationWarning, RuntimeWarning)
-            warnings.simplefilter('ignore', warns)
-            with np.errstate(invalid='ignore'):
-                s = stats.nanstd(self.Xall)
-        assert_(np.isnan(s))
-
-    def test_nanstd_bias_kw(self):
-        with warnings.catch_warnings():
-            warnings.filterwarnings('ignore', category=DeprecationWarning)
-            s = stats.nanstd(self.X, bias=True)
-        assert_approx_equal(s, np.std(self.X, ddof=0))
-
-    def test_nanstd_negative_axis(self):
-        x = np.array([1, 2, 3])
-        with warnings.catch_warnings():
-            warnings.filterwarnings('ignore', category=DeprecationWarning)
-            res = stats.nanstd(x, -1)
-        assert_equal(res, 1)
-
-    def test_nanmedian_none(self):
-        # Check nanmedian when no values are nan.
-        with warnings.catch_warnings():
-            warnings.simplefilter('ignore', DeprecationWarning)
-            m = stats.nanmedian(self.X)
-        assert_approx_equal(m, np.median(self.X))
-
-    def test_nanmedian_axis(self):
-        # Check nanmedian with axis
-        X = self.X.reshape(3,3)
-        with warnings.catch_warnings():
-            warnings.simplefilter('ignore', DeprecationWarning)
-            m = stats.nanmedian(X, axis=0)
-            assert_equal(m, np.median(X, axis=0))
-            m = stats.nanmedian(X, axis=1)
-            assert_equal(m, np.median(X, axis=1))
-
-    def test_nanmedian_some(self):
-        # Check nanmedian when some values only are nan.
-        with warnings.catch_warnings():
-            warnings.simplefilter('ignore', DeprecationWarning)
-            m = stats.nanmedian(self.Xsome)
-        assert_approx_equal(m, np.median(self.Xsomet))
-
-    def test_nanmedian_all(self):
-        # Check nanmedian when all values are nan.
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter('always')
-            m = stats.nanmedian(self.Xall)
-            assert_(np.isnan(m))
-            assert_equal(len(w), 2)  # Deprecation & RuntimeWarning
-            assert_(issubclass(w[1].category, RuntimeWarning))
-
-    def test_nanmedian_all_axis(self):
-        # Check nanmedian when all values are nan.
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter('always')
-            m = stats.nanmedian(self.Xall.reshape(3,3), axis=1)
-            assert_(np.isnan(m).all())
-            assert_equal(len(w), 4)
-            assert_(issubclass(w[-1].category, RuntimeWarning))
-
-    def test_nanmedian_scalars(self):
-        # Check nanmedian for scalar inputs. See ticket #1098.
-        with warnings.catch_warnings():
-            warnings.filterwarnings('ignore', category=RuntimeWarning)
-            warnings.filterwarnings('ignore', category=DeprecationWarning)
-            assert_equal(stats.nanmedian(1), np.median(1))
-            assert_equal(stats.nanmedian(True), np.median(True))
-            assert_equal(stats.nanmedian(np.array(1)), np.median(np.array(1)))
-            assert_equal(stats.nanmedian(np.nan), np.median(np.nan))
 
 
 class TestCorrPearsonr(TestCase):
@@ -1118,7 +997,7 @@ class TestGMean(TestCase):
     def test_large_values(self):
         a = array([1e100, 1e200, 1e300])
         actual = stats.gmean(a)
-        assert_approx_equal(actual, 1e200, significant=14)
+        assert_approx_equal(actual, 1e200, significant=13)
 
 
 class TestHMean(TestCase):
@@ -1737,13 +1616,15 @@ class TestStudentTest(TestCase):
         np.random.seed(7654567)
         x = stats.norm.rvs(loc=5, scale=10, size=51)
         x[50] = np.nan
-        assert_array_equal(stats.ttest_1samp(x, 5.0), (np.nan, np.nan))
+        with warnings.catch_warnings():
+            warnings.filterwarnings('ignore', category=RuntimeWarning)
+            assert_array_equal(stats.ttest_1samp(x, 5.0), (np.nan, np.nan))
 
-        assert_array_almost_equal(stats.ttest_1samp(x, 5.0, nan_policy='omit'),
-                                  (-1.6412624074367159, 0.107147027334048005))
-        assert_raises(ValueError, stats.ttest_1samp, x, 5.0, nan_policy='raise')
-        assert_raises(ValueError, stats.ttest_1samp, x, 5.0,
-                      nan_policy='foobar')
+            assert_array_almost_equal(stats.ttest_1samp(x, 5.0, nan_policy='omit'),
+                                      (-1.6412624074367159, 0.107147027334048005))
+            assert_raises(ValueError, stats.ttest_1samp, x, 5.0, nan_policy='raise')
+            assert_raises(ValueError, stats.ttest_1samp, x, 5.0,
+                          nan_policy='foobar')
 
 
 def test_percentileofscore():
@@ -2351,17 +2232,19 @@ def test_ttest_rel():
     y = (stats.norm.rvs(loc=5, scale=10, size=501) +
          stats.norm.rvs(scale=0.2, size=501))
     y[500] = np.nan
-    assert_array_equal(stats.ttest_rel(x, x), (np.nan, np.nan))
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore', category=RuntimeWarning)
+        assert_array_equal(stats.ttest_rel(x, x), (np.nan, np.nan))
 
-    assert_array_almost_equal(stats.ttest_rel(x, y, nan_policy='omit'),
-                              (0.25299925303978066, 0.8003729814201519))
-    assert_raises(ValueError, stats.ttest_rel, x, y, nan_policy='raise')
-    assert_raises(ValueError, stats.ttest_rel, x, y, nan_policy='foobar')
+        assert_array_almost_equal(stats.ttest_rel(x, y, nan_policy='omit'),
+                                  (0.25299925303978066, 0.8003729814201519))
+        assert_raises(ValueError, stats.ttest_rel, x, y, nan_policy='raise')
+        assert_raises(ValueError, stats.ttest_rel, x, y, nan_policy='foobar')
 
-    # test zero division problem
-    t, p = stats.ttest_rel([0, 0, 0], [1, 1, 1])
-    assert_equal((np.abs(t), p), (np.inf, 0))
-    assert_equal(stats.ttest_rel([0, 0, 0], [0, 0, 0]), (np.nan, np.nan))
+        # test zero division problem
+        t, p = stats.ttest_rel([0, 0, 0], [1, 1, 1])
+        assert_equal((np.abs(t), p), (np.inf, 0))
+        assert_equal(stats.ttest_rel([0, 0, 0], [0, 0, 0]), (np.nan, np.nan))
 
     olderr = np.seterr(all='ignore')
     try:
@@ -2442,17 +2325,19 @@ def test_ttest_ind():
     x[500] = np.nan
     y = stats.norm.rvs(loc=5, scale=10, size=500)
 
-    assert_array_equal(stats.ttest_ind(x, y), (np.nan, np.nan))
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore', category=RuntimeWarning)
+        assert_array_equal(stats.ttest_ind(x, y), (np.nan, np.nan))
 
-    assert_array_almost_equal(stats.ttest_ind(x, y, nan_policy='omit'),
-                              (0.24779670949091914, 0.80434267337517906))
-    assert_raises(ValueError, stats.ttest_ind, x, y, nan_policy='raise')
-    assert_raises(ValueError, stats.ttest_ind, x, y, nan_policy='foobar')
+        assert_array_almost_equal(stats.ttest_ind(x, y, nan_policy='omit'),
+                                  (0.24779670949091914, 0.80434267337517906))
+        assert_raises(ValueError, stats.ttest_ind, x, y, nan_policy='raise')
+        assert_raises(ValueError, stats.ttest_ind, x, y, nan_policy='foobar')
 
-    # test zero division problem
-    t, p = stats.ttest_ind([0, 0, 0], [1, 1, 1])
-    assert_equal((np.abs(t), p), (np.inf, 0))
-    assert_equal(stats.ttest_ind([0, 0, 0], [0, 0, 0]), (np.nan, np.nan))
+        # test zero division problem
+        t, p = stats.ttest_ind([0, 0, 0], [1, 1, 1])
+        assert_equal((np.abs(t), p), (np.inf, 0))
+        assert_equal(stats.ttest_ind([0, 0, 0], [0, 0, 0]), (np.nan, np.nan))
 
     olderr = np.seterr(all='ignore')
     try:
@@ -2558,9 +2443,12 @@ def test_ttest_ind_with_uneq_var():
     assert_equal(t.shape, (3, 2))
 
     # test zero division problem
-    t, p = stats.ttest_ind([0, 0, 0], [1, 1, 1], equal_var=False)
-    assert_equal((np.abs(t), p), (np.inf, 0))
-    assert_equal(stats.ttest_ind([0, 0, 0], [0, 0, 0], equal_var=False), (np.nan, np.nan))
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore', category=RuntimeWarning)
+        t, p = stats.ttest_ind([0, 0, 0], [1, 1, 1], equal_var=False)
+        assert_equal((np.abs(t), p), (np.inf, 0))
+        assert_equal(stats.ttest_ind([0, 0, 0], [0, 0, 0], equal_var=False),
+                     (np.nan, np.nan))
 
     olderr = np.seterr(all='ignore')
     try:
@@ -2570,6 +2458,14 @@ def test_ttest_ind_with_uneq_var():
                      ([0, np.nan], [1, np.nan]))
     finally:
         np.seterr(**olderr)
+
+
+def test_gh5686():
+    mean1, mean2 = np.array([1, 2]), np.array([3, 4])
+    std1, std2 = np.array([5, 3]), np.array([4, 5])
+    nobs1, nobs2 = np.array([130, 140]), np.array([100, 150])
+    # This will raise a TypeError unless gh-5686 is fixed.
+    stats.ttest_ind_from_stats(mean1, std1, nobs1, mean2, std2, nobs2)
 
 
 def test_ttest_1samp_new():
@@ -2600,9 +2496,11 @@ def test_ttest_1samp_new():
     assert_equal(t1.shape, (n1,n2))
 
     # test zero division problem
-    t, p = stats.ttest_1samp([0, 0, 0], 1)
-    assert_equal((np.abs(t), p), (np.inf, 0))
-    assert_equal(stats.ttest_1samp([0, 0, 0], 0), (np.nan, np.nan))
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore', category=RuntimeWarning)
+        t, p = stats.ttest_1samp([0, 0, 0], 1)
+        assert_equal((np.abs(t), p), (np.inf, 0))
+        assert_equal(stats.ttest_1samp([0, 0, 0], 0), (np.nan, np.nan))
 
     olderr = np.seterr(all='ignore')
     try:

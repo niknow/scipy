@@ -1,3 +1,4 @@
+
 SciPy is an open source library of routines for science and engineering
 using Python.  It is a community project sponsored by Enthought, Inc.
 SciPy originated with code contributions by Travis Oliphant, Pearu
@@ -151,8 +152,14 @@ François Magimel for documentation improvements.
 Josh Levy-Kramer for the log survival function of the hypergeometric distribution
 Will Monroe for bug fixes.
 Bernardo Sulzbach for bug fixes.
+Alexander Grigorevskiy for adding extra LAPACK least-square solvers and
+    modifying linalg.lstsq function accordingly.
+Sam Lewis for enhancements to the basinhopping module.
+Tadeusz Pudlik for documentation and vectorizing spherical Bessel functions.
+Philip DeBoer for wrapping random SO(N) and adding random O(N) and
+    correlation matrices in scipy.stats.
 Tyler Reddy and Nikolai Nowaczyk for scipy.spatial.SphericalVoronoi
-
+Bill Sacks for fixes to netcdf i/o.
 
 Institutions
 ------------

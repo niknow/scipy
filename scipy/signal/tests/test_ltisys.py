@@ -17,7 +17,7 @@ def _assert_poles_close(P1,P2, rtol=1e-8, atol=1e-8):
     """
     Check each pole in P1 is close to a pole in P2 with a 1e-8
     relative tolerance or 1e-8 absolute tolerance (useful for zero poles).
-    These tolerance are very scrict but the systems tested are known to
+    These tolerances are very strict but the systems tested are known to
     accept these poles so we should not be far from what is requested.
     """
     P2 = P2.copy()
@@ -249,7 +249,7 @@ class TestSS2TF:
             yield self.tst_matrix_shapes, p, q, r
 
     def test_basic(self):
-        # Test a round trip through tf2ss and sst2f.
+        # Test a round trip through tf2ss and ss2tf.
         b = np.array([1.0, 3.0, 5.0])
         a = np.array([1.0, 2.0, 3.0])
 
@@ -257,12 +257,92 @@ class TestSS2TF:
         assert_allclose(A, [[-2, -3], [1, 0]], rtol=1e-13)
         assert_allclose(B, [[1], [0]], rtol=1e-13)
         assert_allclose(C, [[1, 2]], rtol=1e-13)
-        # N.b. the shape of D returned by tf2ss is (1,), not (1, 1). Sigh.
-        assert_allclose(D, [1], rtol=1e-14)
+        assert_allclose(D, [[1]], rtol=1e-14)
 
         bb, aa = ss2tf(A, B, C, D)
         assert_allclose(bb[0], b, rtol=1e-13)
         assert_allclose(aa, a, rtol=1e-13)
+
+    def test_zero_order_round_trip(self):
+        # See gh-5760
+        tf = (2, 1)
+        A, B, C, D = tf2ss(*tf)
+        assert_allclose(A, [[0]], rtol=1e-13)
+        assert_allclose(B, [[0]], rtol=1e-13)
+        assert_allclose(C, [[0]], rtol=1e-13)
+        assert_allclose(D, [[2]], rtol=1e-13)
+
+        num, den = ss2tf(A, B, C, D)
+        assert_allclose(num, [[2, 0]], rtol=1e-13)
+        assert_allclose(den, [1, 0], rtol=1e-13)
+
+        tf = ([[5], [2]], 1)
+        A, B, C, D = tf2ss(*tf)
+        assert_allclose(A, [[0]], rtol=1e-13)
+        assert_allclose(B, [[0]], rtol=1e-13)
+        assert_allclose(C, [[0], [0]], rtol=1e-13)
+        assert_allclose(D, [[5], [2]], rtol=1e-13)
+
+        num, den = ss2tf(A, B, C, D)
+        assert_allclose(num, [[5, 0], [2, 0]], rtol=1e-13)
+        assert_allclose(den, [1, 0], rtol=1e-13)
+
+    def test_simo_round_trip(self):
+        # See gh-5753
+        tf = ([[1, 2], [1, 1]], [1, 2])
+        A, B, C, D = tf2ss(*tf)
+        assert_allclose(A, [[-2]], rtol=1e-13)
+        assert_allclose(B, [[1]], rtol=1e-13)
+        assert_allclose(C, [[0], [-1]], rtol=1e-13)
+        assert_allclose(D, [[1], [1]], rtol=1e-13)
+
+        num, den = ss2tf(A, B, C, D)
+        assert_allclose(num, [[1, 2], [1, 1]], rtol=1e-13)
+        assert_allclose(den, [1, 2], rtol=1e-13)
+
+        tf = ([[1, 0, 1], [1, 1, 1]], [1, 1, 1])
+        A, B, C, D = tf2ss(*tf)
+        assert_allclose(A, [[-1, -1], [1, 0]], rtol=1e-13)
+        assert_allclose(B, [[1], [0]], rtol=1e-13)
+        assert_allclose(C, [[-1, 0], [0, 0]], rtol=1e-13)
+        assert_allclose(D, [[1], [1]], rtol=1e-13)
+
+        num, den = ss2tf(A, B, C, D)
+        assert_allclose(num, [[1, 0, 1], [1, 1, 1]], rtol=1e-13)
+        assert_allclose(den, [1, 1, 1], rtol=1e-13)
+
+        tf = ([[1, 2, 3], [1, 2, 3]], [1, 2, 3, 4])
+        A, B, C, D = tf2ss(*tf)
+        assert_allclose(A, [[-2, -3, -4], [1, 0, 0], [0, 1, 0]], rtol=1e-13)
+        assert_allclose(B, [[1], [0], [0]], rtol=1e-13)
+        assert_allclose(C, [[1, 2, 3], [1, 2, 3]], rtol=1e-13)
+        assert_allclose(D, [[0], [0]], rtol=1e-13)
+
+        num, den = ss2tf(A, B, C, D)
+        assert_allclose(num, [[0, 1, 2, 3], [0, 1, 2, 3]], rtol=1e-13)
+        assert_allclose(den, [1, 2, 3, 4], rtol=1e-13)
+
+        tf = ([1, [2, 3]], [1, 6])
+        A, B, C, D = tf2ss(*tf)
+        assert_allclose(A, [[-6]], rtol=1e-31)
+        assert_allclose(B, [[1]], rtol=1e-31)
+        assert_allclose(C, [[1], [-9]], rtol=1e-31)
+        assert_allclose(D, [[0], [2]], rtol=1e-31)
+
+        num, den = ss2tf(A, B, C, D)
+        assert_allclose(num, [[0, 1], [2, 3]], rtol=1e-13)
+        assert_allclose(den, [1, 6], rtol=1e-13)
+
+        tf = ([[1, -3], [1, 2, 3]], [1, 6, 5])
+        A, B, C, D = tf2ss(*tf)
+        assert_allclose(A, [[-6, -5], [1, 0]], rtol=1e-13)
+        assert_allclose(B, [[1], [0]], rtol=1e-13)
+        assert_allclose(C, [[1, -3], [-4, -2]], rtol=1e-13)
+        assert_allclose(D, [[0], [1]], rtol=1e-13)
+
+        num, den = ss2tf(A, B, C, D)
+        assert_allclose(num, [[0, 1, -3], [1, 2, 3]], rtol=1e-13)
+        assert_allclose(den, [1, 6, 5], rtol=1e-13)
 
     def test_multioutput(self):
         # Regression test for gh-2669.

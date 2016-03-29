@@ -151,6 +151,14 @@ Derivatives of Bessel Functions
 Spherical Bessel Functions
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+.. autosummary::
+   :toctree: generated/
+
+   spherical_jn -- Spherical Bessel function of the first kind, jn(z)
+   spherical_yn -- Spherical Bessel function of the second kind, yn(z)
+   spherical_in -- Modified spherical Bessel function of the first kind, in(z)
+   spherical_kn -- Modified spherical Bessel function of the second kind, kn(z)
+
 These are not universal functions:
 
 .. autosummary::
@@ -280,7 +288,8 @@ Gamma and Related Functions
    :toctree: generated/
 
    gamma        -- Gamma function.
-   gammaln      -- Log of the absolute value of the gamma function.
+   gammaln      -- Log of the absolute value of the Gamma function.
+   loggamma     -- Principal branch of the logarithm of the Gamma function.
    gammasgn     -- Sign of the gamma function.
    gammainc     -- Incomplete gamma integral.
    gammaincinv  -- Inverse of gammainc.
@@ -633,7 +642,8 @@ from .orthogonal import *
 from .spfun_stats import multigammaln
 from ._ellip_harm import ellip_harm, ellip_harm_2, ellip_normal
 from .lambertw import lambertw
-
+from ._spherical_bessel import (spherical_jn, spherical_yn, spherical_in,
+                                spherical_kn)
 
 __all__ = [s for s in dir() if not s.startswith('_')]
 

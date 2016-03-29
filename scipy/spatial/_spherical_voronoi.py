@@ -1,7 +1,11 @@
 """
 Spherical Voronoi Code
 
+<<<<<<< HEAD
 .. versionadded:: 0.17.0
+=======
+.. versionadded:: 0.18.0
+>>>>>>> 47efe09d129f53e49ecf8abd47c426a45635b7a6
 
 """
 #
@@ -22,6 +26,7 @@ HAS_NUMPY_VEC_DET = (NumpyVersion(np.__version__) >= '1.8.0')
 
 __all__ = ['SphericalVoronoi']
 
+<<<<<<< HEAD
 
 def determinant_fallback(m):
     """
@@ -56,6 +61,8 @@ def determinant_fallback(m):
     return sum([(-1) ** k * m[0][k] * minors[k] for k in range(0, 4)])
 
 
+=======
+>>>>>>> 47efe09d129f53e49ecf8abd47c426a45635b7a6
 def calc_circumcenters(tetrahedrons):
     """ Calculates the cirumcenters of the circumspheres of tetrahedrons.
 
@@ -90,10 +97,17 @@ def calc_circumcenters(tetrahedrons):
         dz = np.linalg.det(dz)
         a = np.linalg.det(a)
     else:
+<<<<<<< HEAD
         dx = np.array([determinant_fallback(m) for m in dx])
         dy = -np.array([determinant_fallback(m) for m in dy])
         dz = np.array([determinant_fallback(m) for m in dz])
         a = np.array([determinant_fallback(m) for m in a])
+=======
+        dx = np.array([np.linalg.det(m) for m in dx])
+        dy = -np.array([np.linalg.det(m) for m in dy])
+        dz = np.array([np.linalg.det(m) for m in dz])
+        a = np.array([np.linalg.det(m) for m in a])
+>>>>>>> 47efe09d129f53e49ecf8abd47c426a45635b7a6
 
     nominator = np.vstack((dx, dy, dz))
     denominator = 2*a
@@ -125,7 +139,11 @@ def project_to_sphere(points, center, radius):
 class SphericalVoronoi:
     """ Voronoi diagrams on the surface of a sphere.
 
+<<<<<<< HEAD
     .. versionadded:: 0.17.0
+=======
+    .. versionadded:: 0.18.0
+>>>>>>> 47efe09d129f53e49ecf8abd47c426a45635b7a6
 
     Parameters
     ----------

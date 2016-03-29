@@ -4,33 +4,10 @@ from numpy.testing import (TestCase,
                            assert_almost_equal,
                            assert_array_equal,
                            assert_array_almost_equal)
-<<<<<<< HEAD
-
-=======
->>>>>>> 47efe09d129f53e49ecf8abd47c426a45635b7a6
 from scipy.spatial import SphericalVoronoi, distance
 from scipy.spatial import _spherical_voronoi as spherical_voronoi
 
 
-<<<<<<< HEAD
-class TestDeterminantFallback(TestCase):
-
-    def test_zero(self):
-        m = np.zeros((4, 4))
-        assert_almost_equal(spherical_voronoi.determinant_fallback(m), 0.0)
-
-    def test_unit(self):
-        m = np.eye(4)
-        assert_almost_equal(spherical_voronoi.determinant_fallback(m), 1.0)
-
-    def test_example(self):
-        m = np.array([[2, 5, -10, -7], [-7, -3, -1, 9],
-                      [8, -6, -4, 2], [-9, -4, -3, 4]])
-        assert_almost_equal(spherical_voronoi.determinant_fallback(m), 6528.0)
-
-
-=======
->>>>>>> 47efe09d129f53e49ecf8abd47c426a45635b7a6
 class TestCircumcenters(TestCase):
 
     def test_circumcenters(self):
@@ -136,11 +113,7 @@ class TestSphericalVoronoi(TestCase):
     def test_voronoi_circles(self):
         sv = spherical_voronoi.SphericalVoronoi(self.points)
         for vertex in sv.vertices:
-<<<<<<< HEAD
-            distances = distance.cdist(sv.points, np.array([vertex]))
-=======
             distances = distance.cdist(sv.points,np.array([vertex]))
->>>>>>> 47efe09d129f53e49ecf8abd47c426a45635b7a6
             closest = np.array(sorted(distances)[0:3])
             assert_almost_equal(closest[0], closest[1], 7, str(vertex))
             assert_almost_equal(closest[0], closest[2], 7, str(vertex))
